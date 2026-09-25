@@ -106,11 +106,27 @@ function withTimeout<T>(
 }
 
 /**
+ * The `npm` field values whose providers speak the OpenAI-compatible
+ * protocol that LiteLLM proxies expose machinery for. Any provider using
+ * one of these AND configured with an explicit `baseURL` is treated as a
+ * LiteLLM candidate, so arbitrary provider ids (e.g. `ai-proxy-lkd`) are
+ * no longer silently ignored just because they don't carry the `litellm`
+ * name or flag.
+ */
+const OPENAI_COMPATIBLE_NPM = ['@ai-sdk/openai-compatible', '@ai-sdk/openai'] as const
+
+/**
  * Helper to determine if a provider ID or its configured options indicate
  * compatibility with LiteLLM.
+ *
+ * Keeps every upstream match (id `litellm`, `litellm-`/`litellm_` prefix,
+ * or a `litellm*` options flag) AND adds a structural match: a provider
+ * using an openai-compatible npm package with an explicit `baseURL`
+ * string. Exported for tests.
  */
-function isLiteLLMProvider(
+export function isLiteLLMProvider(
   providerId: string,
+  npm: string | undefined,
   options: Record<string, unknown>,
 ): boolean {
   if (providerId === CHAT_PROVIDER_ID) return true
@@ -119,6 +135,11 @@ function isLiteLLMProvider(
   if (options.litellmCompatible === true) return true
   if (options['litellm-compatible'] === true) return true
   if (options.litellm_compatible === true) return true
+  // Structural match: openai-compatible npm + explicit baseURL.
+  const isOpenAICompatible =
+    npm !== undefined &&
+    (OPENAI_COMPATIBLE_NPM as readonly string[]).includes(npm)
+  if (isOpenAICompatible && typeof options.baseURL === 'string') return true
   return false
 }
 
@@ -523,7 +544,8 @@ export const LiteLLMPlugin: Plugin = async (input: PluginInput) => {
         const provider = config.provider[id]
         if (provider && typeof provider === 'object') {
           const options = (provider.options ?? {}) as Record<string, unknown>
-          if (isLiteLLMProvider(id, options)) {
+          const npm = typeof provider.npm === 'string' ? provider.npm : undefined
+          if (isLiteLLMProvider(id, npm, options)) {
             liteLLMProviders.push({ id, provider })
           }
         }
