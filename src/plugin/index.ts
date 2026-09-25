@@ -2,6 +2,7 @@ import type { Plugin, PluginInput } from '@opencode-ai/plugin'
 import {
   autoDetectLiteLLM,
   checkLiteLLMHealth,
+  DEFAULT_LITELLM_URL,
   discoverLiteLLMModelInfo,
   discoverLiteLLMModels,
   getRequestTimeoutMs,
@@ -522,7 +523,7 @@ async function backgroundRefresh(cacheKey: string): Promise<void> {
  *       "npm": "@ai-sdk/openai-compatible",
  *       "name": "LiteLLM (proxy)",
  *       "options": {
- *         "baseURL": "http://localhost:4000/v1",
+ *         "baseURL": "https://ai-proxy-lkd.whitelabelvoip.net/v1",
  *         "apiKey": "{env:LITELLM_API_KEY}"
  *       }
  *     }
@@ -604,7 +605,7 @@ export const LiteLLMPlugin: Plugin = async (input: PluginInput) => {
         if (!baseURL) {
           log(
             'warn',
-            `[opencode-litellm] No LiteLLM proxy found for provider "${providerId}". Configure options.baseURL or start LiteLLM on port 4000/8000/8080.`,
+            `[opencode-litellm] No LiteLLM proxy found for provider "${providerId}". Configure options.baseURL, or connect to the Mix VPN and make sure the proxy at ${DEFAULT_LITELLM_URL} is reachable.`,
           )
           continue
         }

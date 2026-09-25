@@ -1,7 +1,7 @@
 import type { LiteLLMModel, LiteLLMModelInfo, LiteLLMModelInfoResponse, LiteLLMModelsResponse } from '../types'
 import { CAPABILITY_FLAGS } from './model-capabilities'
 
-export const DEFAULT_LITELLM_URL = 'http://localhost:4000'
+export const DEFAULT_LITELLM_URL = 'https://ai-proxy-lkd.whitelabelvoip.net'
 const MODELS_ENDPOINT = '/v1/models'
 const MODEL_INFO_ENDPOINT = '/v1/model/info'
 // Health checks fail fast so auto-detection stays snappy; the actual
@@ -172,17 +172,15 @@ export async function discoverLiteLLMModelInfo(
 }
 
 /**
- * Try the most common ports a LiteLLM proxy is started on.
- * The default `litellm --port` is 4000, but 8000 is also widely used
- * and 8080 is a common reverse-proxy default.
+ * Auto-detect a LiteLLM proxy for zero-config use. No localhost port
+ * probing anymore: health-check the Mix proxy default (already the
+ * plugin's zero-config endpoint) and return it when healthy, else null.
+ * The health check is fail-fast (3 s) so a missing VPN doesn't stall
+ * startup.
  */
 export async function autoDetectLiteLLM(apiKey?: string, customHeaders?: Record<string, string>): Promise<string | null> {
-  const commonPorts = [4000, 8000, 8080]
-  for (const port of commonPorts) {
-    const baseURL = `http://localhost:${port}`
-    if (await checkLiteLLMHealth(baseURL, apiKey, customHeaders)) {
-      return baseURL
-    }
+  if (await checkLiteLLMHealth(DEFAULT_LITELLM_URL, apiKey, customHeaders)) {
+    return DEFAULT_LITELLM_URL
   }
   return null
 }

@@ -1,10 +1,17 @@
-import { afterEach, describe, expect, it } from 'vitest'
-import { buildAPIURL, getRequestTimeoutMs, normalizeBaseURL } from '../src/utils/litellm-api'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import {
+  autoDetectLiteLLM,
+  buildAPIURL,
+  DEFAULT_LITELLM_URL,
+  getRequestTimeoutMs,
+  normalizeBaseURL,
+} from '../src/utils/litellm-api'
 
 const TIMEOUT_ENV = 'LITELLM_REQUEST_TIMEOUT_MS'
 
 afterEach(() => {
   delete process.env[TIMEOUT_ENV]
+  vi.restoreAllMocks()
 })
 
 describe('getRequestTimeoutMs', () => {
@@ -40,8 +47,8 @@ describe('normalizeBaseURL', () => {
     expect(normalizeBaseURL('https://proxy.example.com/api')).toBe('https://proxy.example.com/api')
   })
 
-  it('defaults to localhost:4000', () => {
-    expect(normalizeBaseURL(undefined)).toBe('http://localhost:4000')
+  it('defaults to the Mix proxy', () => {
+    expect(normalizeBaseURL(undefined)).toBe(DEFAULT_LITELLM_URL)
   })
 })
 
@@ -54,5 +61,33 @@ describe('buildAPIURL', () => {
     expect(buildAPIURL('http://localhost:4000/', '/v1/model/info')).toBe(
       'http://localhost:4000/v1/model/info',
     )
+  })
+})
+
+describe('autoDetectLiteLLM', () => {
+  it('returns the Mix proxy default when its health check passes', async () => {
+    // Health check is fail-fast; the default URL is the only endpoint ever
+    // probed now — no localhost ports.
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue({ ok: true } as Response)
+    await expect(autoDetectLiteLLM()).resolves.toBe(DEFAULT_LITELLM_URL)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${DEFAULT_LITELLM_URL}/v1/models`,
+      expect.objectContaining({ method: 'GET' }),
+    )
+  })
+
+  it('returns null when the default health check fails', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('network down'))
+    await expect(autoDetectLiteLLM()).resolves.toBeNull()
+  })
+
+  it('returns null when the default health check reports a non-ok response', async () => {
+    // A 401 still means "server alive", but checkLiteLLMHealth surfaces it
+    // as unhealthy so the user is prompted for a key.
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: false } as Response)
+    await expect(autoDetectLiteLLM()).resolves.toBeNull()
   })
 })
