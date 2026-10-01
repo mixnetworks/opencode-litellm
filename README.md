@@ -22,7 +22,7 @@ Clone the plugin and expose its entry file in OpenCode's global plugin
 directory (OpenCode auto-loads every plugin file found there):
 
 ```bash
-git clone https://github.com/mixnetworks/opencode-litellm.git ~/.config/opencode/plugins/opencode-litellm
+git clone git@github.com:mixnetworks/opencode-litellm.git ~/.config/opencode/plugins/opencode-litellm
 cd ~/.config/opencode/plugins/opencode-litellm
 npm install
 ln -s ~/.config/opencode/plugins/opencode-litellm/src/index.ts ~/.config/opencode/plugins/opencode-litellm.ts
