@@ -1,3 +1,10 @@
+## [1.6.1](https://github.com/yuseferi/opencode-litellm/compare/v1.6.0...v1.6.1) (2026-10-20)
+
+
+### Bug Fixes
+
+* **v2:** spell effort variants for Anthropic runtime packages ([#45](https://github.com/yuseferi/opencode-litellm/issues/45)) ([4840d81](https://github.com/yuseferi/opencode-litellm/commit/4840d813a04703a9d3377528e782d8897997aa81))
+
 # [1.6.0](https://github.com/yuseferi/opencode-litellm/compare/v1.5.0...v1.6.0) (2026-10-20)
 
 
