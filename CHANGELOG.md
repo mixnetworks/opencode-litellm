@@ -70,6 +70,7 @@
 
 ### Features
 
+* register a LiteLLM integration with OpenCode 2's connect-provider dialog so gateways can be connected entirely from the web UI (API key plus an optional base URL/provider id form), with the stored key used for discovery and injected by OpenCode at request time
 * **v2:** add the `modelCompatibility` option to set or remove the inferred `cacheFormat` per model
 * route models LiteLLM reports with `mode: "responses"` through the OpenAI Responses API (per-model runtime package on OpenCode 2; a `<provider>-responses` sibling on OpenCode 1)
 * support the OpenCode 2 API with the OpenCode 1 server entrypoint
