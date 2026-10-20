@@ -25,6 +25,7 @@ import {
   writeModelCache,
 } from '../utils/model-cache'
 import { normalizeBaseURL, autoDetectLiteLLM } from '../utils/litellm-api'
+import { getOpenCodeStoredApiKey } from '../utils/opencode-auth'
 import { parseModelCapabilities } from '../utils/model-capabilities'
 import type { ModelCapabilities } from '../utils/model-capabilities'
 import {
@@ -341,20 +342,25 @@ async function makeProviderSource(
     CHAT_PROVIDER_ID
   const configuredBaseURL = readString(settings.baseURL)
   const connectedApiKey = connected?.apiKey
-  const configuredApiKey =
-    readString(providerSettings.apiKey) ??
-    readString(pluginOptions.apiKey) ??
-    process.env.LITELLM_API_KEY ??
-    process.env.LITELLM_MASTER_KEY
-  // A provider bound to an integration relies on OpenCode for its credential
-  // even before one is connected. The plugin's own integration only counts
-  // once it actually resolved a key, so env/config setups are unaffected.
-  const usesConnectionCredential =
-    !configuredApiKey && Boolean(provider?.integrationID ?? connectedApiKey)
+  // Precedence rule: an explicit settings/plugin-options apiKey is the
+  // operator's deliberate config and stays first; then a credential the user
+  // saved in the box — the ACTIVE connection or the `/connect` entry in the
+  // box auth store — which wins over the pod environment. The env is a
+  // box-level fallback for users who have not saved a credential, never an
+  // override of the user's explicit choice.
+  const settingsApiKey = readString(providerSettings.apiKey) ?? readString(pluginOptions.apiKey)
+  const envApiKey = process.env.LITELLM_API_KEY ?? process.env.LITELLM_MASTER_KEY
+  // The key OpenCode itself stored for this provider in the box auth store
+  // (/connect journey). A config-defined provider carries no integrationID, so
+  // the host-integration path above cannot see it — read the store directly,
+  // exactly like the v1 entrypoint does. Still ahead of the env: a saved
+  // credential is the user's explicit choice and beats the box-level fallback.
+  const storedKey = await getOpenCodeStoredApiKey(id)
+  const usesConnectionCredential = settingsApiKey === undefined && connectedApiKey !== undefined
   const integrationID =
     provider?.integrationID ??
-    (usesConnectionCredential && connectedApiKey ? LITELLM_INTEGRATION_ID : undefined)
-  const apiKey = configuredApiKey ?? connectedApiKey
+    (usesConnectionCredential ? LITELLM_INTEGRATION_ID : undefined)
+  const apiKey = settingsApiKey ?? connectedApiKey ?? storedKey ?? envApiKey
   const filters = readModelFilters(settings)
   const capabilities = parseModelCapabilities(settings.modelCapabilities)
   const compatibility = parseModelCompatibility(settings.modelCompatibility)
@@ -372,9 +378,12 @@ async function makeProviderSource(
   }
 
   const baseURL = normalizeBaseURL(detectedBaseURL)
+  // The cache key is isolated by the effective credential (a fingerprint, never
+  // the raw key): a credential change starts a fresh discovery instead of
+  // serving another credential's cached model list.
   const cacheKey = buildCacheKey(id, baseURL, filters, capabilities, {
     formatModelNames,
-  })
+  }, apiKey)
   const cacheEntry = readModelCacheEntry(cacheKey)
   let entries = cacheEntry?.models ?? null
   let responsesIds = cacheEntry?.responsesIds ?? []
@@ -531,16 +540,40 @@ async function refreshConnectionCredential(
   context: Context,
   source: ProviderSource,
 ): Promise<boolean> {
-  if (!source.integrationID || !source.usesConnectionCredential) return false
+  // The gate is the integration's presence, not the current credential choice:
+  // setup may run before the user saves a credential, and the first save must
+  // refresh this source instead of leaving it on the environment key.
+  if (!source.integrationID) return false
 
   try {
     const connection = await context.integration.connection.active(source.integrationID)
     const credential = connection
       ? await context.integration.connection.resolve(connection)
       : undefined
-    const apiKey = credential?.type === 'key' ? credential.key : undefined
-    if (apiKey === source.apiKey) return false
-    source.apiKey = apiKey
+    const connectionKey = credential?.type === 'key' ? credential.key : undefined
+    const settingsApiKey = readString(source.settings.apiKey)
+    let nextKey: string | undefined
+    let nextUsesConnection: boolean
+    if (connectionKey !== undefined) {
+      // An explicit settings apiKey stays first; a connection credential takes
+      // over the environment/auto-detected key.
+      nextKey = settingsApiKey ?? connectionKey
+      nextUsesConnection = settingsApiKey === undefined
+    } else {
+      // The connection credential is gone (the connection was removed or its
+      // credential cleared): fall back through the stored credential / env key
+      // — the same precedence `makeProviderSource` uses — instead of retaining
+      // the previous connection key, which `runtimeSettings` would otherwise
+      // materialize into provider settings.
+      const storedKey = await getOpenCodeStoredApiKey(source.id)
+      const envKey = process.env.LITELLM_API_KEY ?? process.env.LITELLM_MASTER_KEY
+      nextKey = settingsApiKey ?? storedKey ?? envKey
+      nextUsesConnection = false
+    }
+    if (nextKey === source.apiKey && nextUsesConnection === source.usesConnectionCredential) return false
+    source.apiKey = nextKey
+    source.usesConnectionCredential = nextUsesConnection
+    source.credentialReloadRequired = true
     return true
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
