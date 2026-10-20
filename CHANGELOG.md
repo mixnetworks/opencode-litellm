@@ -1,3 +1,10 @@
+# [1.7.0](https://github.com/yuseferi/opencode-litellm/compare/v1.6.1...v1.7.0) (2026-10-20)
+
+
+### Features
+
+* **v2:** register LiteLLM integration for web-UI connect ([#41](https://github.com/yuseferi/opencode-litellm/issues/41)) ([4be4046](https://github.com/yuseferi/opencode-litellm/commit/4be40467f8cb6c106b233c9d0039f75c35d5674f))
+
 ## [1.6.1](https://github.com/yuseferi/opencode-litellm/compare/v1.6.0...v1.6.1) (2026-10-20)
 
 
