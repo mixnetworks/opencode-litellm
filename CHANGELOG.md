@@ -1,3 +1,10 @@
+## [1.7.1](https://github.com/yuseferi/opencode-litellm/compare/v1.7.0...v1.7.1) (2026-10-20)
+
+
+### Bug Fixes
+
+* prefer the user's saved provider credential over the pod env key ([#43](https://github.com/yuseferi/opencode-litellm/issues/43)) ([cab808f](https://github.com/yuseferi/opencode-litellm/commit/cab808f7d893bf026acce92fcd8df76bf117f33b)), closes [#44](https://github.com/yuseferi/opencode-litellm/issues/44) [#41](https://github.com/yuseferi/opencode-litellm/issues/41)
+
 # [1.7.0](https://github.com/yuseferi/opencode-litellm/compare/v1.6.1...v1.7.0) (2026-10-20)
 
 
