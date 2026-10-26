@@ -1,3 +1,10 @@
+# [1.8.0](https://github.com/yuseferi/opencode-litellm/compare/v1.7.1...v1.8.0) (2026-10-26)
+
+
+### Features
+
+* declare temperature support for models that list it ([#47](https://github.com/yuseferi/opencode-litellm/issues/47)) ([f68252f](https://github.com/yuseferi/opencode-litellm/commit/f68252f5d72a6caa9516dbae264b1153ad72d906))
+
 ## [1.7.1](https://github.com/yuseferi/opencode-litellm/compare/v1.7.0...v1.7.1) (2026-10-20)
 
 
