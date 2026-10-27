@@ -39,6 +39,11 @@ cat > opencode.json <<'EOF'
 EOF
 ```
 
+**Step 0 — restart OpenCode after any plugin upgrade.** A server started
+before the upgrade keeps the old plugin module cached and serves no models
+until it is restarted; restart it (or use a fresh scratch directory /
+`opencode run --standalone`) before running the checks below.
+
 1. **Host version**: `opencode --version` → 2.1.3 (or any 2.0.19+).
 2. **Single load** (upgrade audit B7): `opencode plugin list` →
    `opencode-litellm` listed **exactly once**. If it appears twice, the

@@ -178,6 +178,10 @@ entirely from the UI. A credential saved that way beats the environment key.
   anomalyco/opencode#57421). Interactive sessions are not affected. Run the
   command again — or warm the cache once with an interactive session —
   before diagnosing; it is not a plugin failure.
+- After upgrading the plugin, restart `opencode` (or start a fresh session /
+  `opencode run --standalone`): an `opencode` server started **before** the
+  upgrade keeps the old plugin module cached and can serve no models until it
+  is restarted. Fresh directories and `--standalone` runs are not affected.
 - `No LiteLLM proxy found ...` in the logs: you are not on the VPN, or the
   proxy is down. Connect to the VPN and retry.
 - Discovery gets 401s: the key file is missing, unreadable, or contains
