@@ -60,6 +60,34 @@ ln -s ~/.config/opencode/plugins/opencode-litellm/src/index.ts ~/.config/opencod
 > the plugin silently fails to load (sst/opencode#8763). The local install
 > above is the supported form.
 
+> Until upstream publishes a v2-compatible release, the npm package
+> (`opencode-plugin-litellm`) still ships the v1-only build. The clone install
+> above is how you get the dual v1+v2 version.
+
+### OpenCode 2: load the plugin once
+
+On OpenCode 2 the plugins directory auto-loads both flat `.ts` files and
+immediate plugin package directories — so the install above (clone directory
+**plus** the `opencode-litellm.ts` symlink) can be discovered twice. After
+installing, check:
+
+```bash
+opencode plugin list
+```
+
+`opencode-litellm` must be listed **once**. If it appears twice, delete the
+symlink and declare the directory instead:
+
+```jsonc
+{
+  "plugins": ["~/.config/opencode/plugins/opencode-litellm"]
+}
+```
+
+Explicitly configured plugin paths must be directories — a single-file path
+is skipped with a warning. On OpenCode 2 the clone directory alone is
+sufficient; on OpenCode 1 the flat symlink form from above is what loads.
+
 ## Usage
 
 Put your proxy API key in a file that only you can read:
@@ -142,6 +170,14 @@ entirely from the UI. A credential saved that way beats the environment key.
 
 ## Troubleshooting
 
+- First one-shot run fails with `Model unavailable: ai-proxy-lkd/…` on
+  OpenCode 2: on a cold model cache the first `opencode run` can resolve its
+  model before discovery lands — OpenCode 2 registers configured providers
+  only after plugin setup, so a one-shot command can be past model resolution
+  before the models arrive (upstream host ordering,
+  anomalyco/opencode#57421). Interactive sessions are not affected. Run the
+  command again — or warm the cache once with an interactive session —
+  before diagnosing; it is not a plugin failure.
 - `No LiteLLM proxy found ...` in the logs: you are not on the VPN, or the
   proxy is down. Connect to the VPN and retry.
 - Discovery gets 401s: the key file is missing, unreadable, or contains
