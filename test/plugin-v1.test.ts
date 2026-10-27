@@ -31,6 +31,7 @@ describe('OpenCode 1 config hook', () => {
   const originalFetch = globalThis.fetch
   let originalCacheHome: string | undefined
   let originalHome: string | undefined
+  let originalLiteLLMBaseURL: string | undefined
   let originalLiteLLMApiKey: string | undefined
   let originalLiteLLMMasterKey: string | undefined
   let cacheDirectory: string
@@ -39,10 +40,13 @@ describe('OpenCode 1 config hook', () => {
   beforeEach(() => {
     originalCacheHome = process.env.XDG_CACHE_HOME
     originalHome = process.env.HOME
+    originalLiteLLMBaseURL = process.env.LITELLM_BASE_URL
     originalLiteLLMApiKey = process.env.LITELLM_API_KEY
     originalLiteLLMMasterKey = process.env.LITELLM_MASTER_KEY
     delete process.env.LITELLM_API_KEY
     delete process.env.LITELLM_MASTER_KEY
+    // D1's env tier must never leak in from the developer's shell.
+    delete process.env.LITELLM_BASE_URL
     // Isolate the box auth store: tests must never read the developer's real
     // credentials, and stored-key fingerprints must be deterministic.
     homeDirectory = mkdtempSync(join(tmpdir(), 'opencode-litellm-home-'))
@@ -54,6 +58,7 @@ describe('OpenCode 1 config hook', () => {
     globalThis.fetch = originalFetch
     restoreEnv('XDG_CACHE_HOME', originalCacheHome)
     restoreEnv('HOME', originalHome)
+    restoreEnv('LITELLM_BASE_URL', originalLiteLLMBaseURL)
     restoreEnv('LITELLM_API_KEY', originalLiteLLMApiKey)
     restoreEnv('LITELLM_MASTER_KEY', originalLiteLLMMasterKey)
     if (cacheDirectory) rmSync(cacheDirectory, { recursive: true, force: true })
@@ -381,5 +386,45 @@ describe('OpenCode 1 config hook', () => {
 
     expect(config.provider.litellm.models ?? {}).toEqual({})
     expect(config.provider['litellm-responses']).toBeUndefined()
+  })
+
+  it('keeps an explicit provider baseURL ahead of LITELLM_BASE_URL (D1 precedence)', async () => {
+    useIsolatedState()
+    const explicitBaseURL = 'http://127.0.0.1:45591/v1'
+    const envBaseURL = 'http://127.0.0.1:45592/v1'
+    process.env.LITELLM_BASE_URL = envBaseURL
+
+    const requestURLs: string[] = []
+    globalThis.fetch = vi.fn(async (input) => {
+      const url = String(input)
+      requestURLs.push(url)
+      if (url.endsWith('/v1/model/info')) {
+        return new Response(
+          JSON.stringify({
+            data: [
+              {
+                model_name: 'configured-model',
+                model_info: { key: 'configured-model', mode: 'chat' },
+              },
+            ],
+          }),
+          { status: 200 },
+        )
+      }
+      return new Response(
+        JSON.stringify({ data: [{ id: 'configured-model', object: 'model' }] }),
+        { status: 200 },
+      )
+    })
+
+    const config = await runConfigHook(explicitBaseURL)
+
+    // Tier 1 (explicit options.baseURL) beats tier 2 (LITELLM_BASE_URL): an
+    // operator-configured provider is never rewritten by the environment.
+    expect(config.provider.litellm.options).toMatchObject({ baseURL: explicitBaseURL })
+    expect(Object.keys(config.provider.litellm.models ?? {})).toEqual(['configured-model'])
+    expect(requestURLs.length).toBeGreaterThan(0)
+    expect(requestURLs.every((url) => url.startsWith('http://127.0.0.1:45591'))).toBe(true)
+    expect(requestURLs.some((url) => url.startsWith('http://127.0.0.1:45592'))).toBe(false)
   })
 })

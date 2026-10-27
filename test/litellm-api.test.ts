@@ -352,6 +352,19 @@ describe('autoDetectLiteLLM', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  it('falls through to the Mix proxy when LITELLM_BASE_URL is blank', async () => {
+    // A whitespace-only env value is not deliberate config: D1 moves to the
+    // next tier instead of returning an unusable URL.
+    process.env[BASE_URL_ENV] = '   '
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true } as Response)
+    await expect(autoDetectLiteLLM()).resolves.toBe(DEFAULT_LITELLM_URL)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${DEFAULT_LITELLM_URL}/v1/models`,
+      expect.objectContaining({ method: 'GET' }),
+    )
+  })
+
   it('returns the Mix proxy default when its health check passes', async () => {
     // Health check is fail-fast; the default URL is the only endpoint ever
     // probed now — no localhost ports.

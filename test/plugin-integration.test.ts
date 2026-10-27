@@ -3,7 +3,15 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import plugin from '../src'
+import { DEFAULT_LITELLM_URL } from '../src/utils/litellm-api'
 import type { Context } from '@opencode/plugin/promise/plugin'
+
+/**
+ * D1: the fork's zero-config endpoint is the Mix proxy. Auto-detection never
+ * probes a localhost port, so the only fallback a keyless setup can register
+ * is this URL.
+ */
+const MIX_PROXY_URL = 'https://ai-proxy-lkd.whitelabelvoip.net'
 
 function restoreEnv(name: string, value: string | undefined): void {
   if (value === undefined) delete process.env[name]
@@ -377,8 +385,9 @@ describe('connect dialog integration', () => {
 
     globalThis.fetch = vi.fn(async (input) => {
       const url = String(input)
-      // Only the connected gateway answers; the localhost auto-detect probes
-      // must fail so nothing is registered before the credential arrives.
+      // Only the connected gateway answers; the Mix proxy health check must
+      // fail (D1 has no localhost fallback) so nothing is registered before
+      // the credential arrives.
       if (!url.startsWith('http://127.0.0.1:44504')) {
         return new Response('not found', { status: 503 })
       }
@@ -454,18 +463,21 @@ describe('connect dialog integration', () => {
     await cleanup?.()
   })
 
-  it('replaces a keyless auto-detected fallback when the first credential is connected mid-session', async () => {
+  it('replaces a keyless Mix-proxy fallback when the first credential is connected mid-session', async () => {
     cacheDirectory = mkdtempSync(join(tmpdir(), 'opencode-litellm-fallback-takeover-test-'))
     process.env.XDG_CACHE_HOME = cacheDirectory
+    // D1: the zero-config endpoint is the Mix proxy, so the fallback below is
+    // that endpoint — not an upstream-style localhost auto-detect.
+    expect(DEFAULT_LITELLM_URL).toBe(MIX_PROXY_URL)
 
     const authorizationHeaders: string[] = []
     globalThis.fetch = vi.fn(async (input, init) => {
       authorizationHeaders.push(new Headers(init?.headers).get('Authorization') ?? '')
       const url = String(input)
-      // A local proxy answers on the default port, so setup registers a
-      // keyless fallback provider before any credential exists.
-      if (url.startsWith('http://localhost:4000')) {
-        return discoveryFetch([{ id: 'local-model' }])(input)
+      // The Mix proxy answers its health check, so setup registers a keyless
+      // fallback provider before any credential exists.
+      if (url.startsWith(MIX_PROXY_URL)) {
+        return discoveryFetch([{ id: 'mix-model' }])(input)
       }
       if (url.startsWith('http://127.0.0.1:44505')) {
         return discoveryFetch([{ id: 'gateway-model' }])(input)
@@ -516,17 +528,72 @@ describe('connect dialog integration', () => {
 
     const cleanup = await plugin.setup(context)
     expect(registered).toHaveLength(1)
-    expect(registered[0].info.settings).toMatchObject({ baseURL: 'http://localhost:4000/v1' })
+    // The keyless fallback is the Mix proxy. Every provider baseURL carries the
+    // plugin's standard /v1 suffix, so the Mix endpoint lands as <proxy>/v1.
+    expect(registered[0].info.settings).toMatchObject({ baseURL: `${MIX_PROXY_URL}/v1` })
+    expect(registered[0].models.map((model) => model.id)).toEqual(['mix-model'])
 
     await vi.waitFor(() => expect(reload).toHaveBeenCalledOnce())
     // The dialog's URL and key take over from the auto-detected fallback:
-    // the provider is re-bound to the integration and the local-only model
+    // the provider is re-bound to the integration and the proxy-only model
     // is dropped in favour of the gateway's catalog.
     expect(registered[0].info.settings).toMatchObject({ baseURL: 'http://127.0.0.1:44505/v1' })
     expect(registered[0].info).toMatchObject({ integrationID: 'litellm' })
     expect(registered[0].info.settings).not.toHaveProperty('apiKey')
     expect(registered[0].models.map((model) => model.id)).toEqual(['gateway-model'])
     expect(authorizationHeaders).toContain('Bearer gateway-key')
+    // The takeover updates the same registry entry; nothing is retired.
+    expect(removed).toEqual([])
+
+    await cleanup?.()
+  })
+
+  it('registers no fallback when the Mix proxy health check fails, naming config not ports', async () => {
+    cacheDirectory = mkdtempSync(join(tmpdir(), 'opencode-litellm-no-proxy-test-'))
+    process.env.XDG_CACHE_HOME = cacheDirectory
+
+    const probedURLs: string[] = []
+    globalThis.fetch = vi.fn(async (input) => {
+      probedURLs.push(String(input))
+      return new Response('not found', { status: 503 })
+    })
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    const integration = makeIntegration()
+    const registered: RegisteredEntry[] = []
+    const editor = makeStatefulEditor(registered, [])
+    const context = {
+      app: { name: 'OpenCode', version: '2.0.14', channel: 'stable' },
+      options: {},
+      provider: {
+        list: vi.fn(async () => ({ data: [] })),
+        transform: vi.fn(async (transform: (editor: unknown) => void) => {
+          transform(editor)
+          return { dispose: vi.fn(async () => {}) }
+        }),
+        reload: vi.fn(async () => {}),
+      },
+      integration,
+      event: { subscribe: () => (async function* () {})() },
+    } as unknown as Context
+
+    const cleanup = await plugin.setup(context)
+
+    // D1: with no credential and an unreachable proxy there is no endpoint to
+    // register — the upstream localhost fallback no longer exists.
+    expect(registered).toHaveLength(0)
+    // The Mix proxy health check is the only endpoint ever probed; there is no
+    // localhost port loop behind it.
+    expect(probedURLs).toEqual([`${MIX_PROXY_URL}/v1/models`])
+
+    const messages = log.mock.calls.map((call) => String(call[0]))
+    const missingProxy = messages.find((message) => message.includes('No LiteLLM proxy found'))
+    expect(missingProxy).toBeDefined()
+    // The diagnostic must point at configuration (D1's explicit/env tiers), not
+    // at ports that the plugin never tries.
+    expect(missingProxy).toContain('providers.<id>.settings.baseURL')
+    expect(missingProxy).toContain('LITELLM_BASE_URL')
+    expect(missingProxy).not.toMatch(/\b(4000|8000|8080)\b/)
 
     await cleanup?.()
   })
@@ -708,8 +775,8 @@ describe('connect dialog integration', () => {
     }
     const context = {
       app: { name: 'OpenCode', version: '2.0.14', channel: 'stable' },
-      // The auto-detect probe fails, so only the (oauth) connection exists —
-      // which the plugin must not use, leaving no provider at all.
+      // The Mix proxy health check fails, so only the (oauth) connection
+      // exists — which the plugin must not use, leaving no provider at all.
       options: {},
       provider: {
         list: vi.fn(async () => ({ data: [] })),
