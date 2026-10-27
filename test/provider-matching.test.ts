@@ -58,4 +58,38 @@ describe('isLiteLLMProvider', () => {
     expect(isLiteLLMProvider('my-provider', undefined, {})).toBe(false)
     expect(isLiteLLMProvider('my-provider', '@ai-sdk/google', { baseURL: 'https://x' })).toBe(false)
   })
+
+  it('matches a v2 openai-compatible provider by package', () => {
+    expect(
+      isLiteLLMProvider('ai-proxy-lkd', '@opencode/ai/providers/openai-compatible', {
+        baseURL: 'https://ai-proxy-lkd.whitelabelvoip.net',
+      }),
+    ).toBe(true)
+  })
+
+  it('does not match a v2 openai-compatible package without a baseURL', () => {
+    expect(
+      isLiteLLMProvider('ai-proxy-lkd', '@opencode/ai/providers/openai-compatible', {}),
+    ).toBe(false)
+  })
+
+  it('matches the id `litellm` with no package', () => {
+    expect(isLiteLLMProvider('litellm', undefined)).toBe(true)
+  })
+
+  it('does not match an unrelated v2 package even with a baseURL', () => {
+    expect(
+      isLiteLLMProvider('ai-proxy-lkd', '@opencode/ai/providers/anthropic', {
+        baseURL: 'https://ai-proxy-lkd.whitelabelvoip.net',
+      }),
+    ).toBe(false)
+  })
+
+  it('matches an explicit litellm flag on a v2-shaped provider', () => {
+    expect(
+      isLiteLLMProvider('ai-proxy-lkd', '@opencode/ai/providers/openai-compatible', {
+        litellm: true,
+      }),
+    ).toBe(true)
+  })
 })

@@ -617,7 +617,7 @@ async function listMatchingProviders(context: Context): Promise<ProviderInfo[]> 
   try {
     const providers = (await context.provider.list()).data
     return providers.filter((provider) =>
-      isLiteLLMProvider(provider.id, asRecord(provider.settings)),
+      isLiteLLMProvider(provider.id, provider.package, asRecord(provider.settings)),
     )
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -745,7 +745,7 @@ const definition = Plugin.define({
     }
     if (sources.size === 0) {
       logInfo(
-        '[opencode-litellm] No LiteLLM proxy found. Configure providers.litellm.settings.baseURL or start LiteLLM on port 4000/8000/8080.',
+        '[opencode-litellm] No LiteLLM proxy found. Configure providers.<id>.settings.baseURL or set LITELLM_BASE_URL.',
       )
     }
 

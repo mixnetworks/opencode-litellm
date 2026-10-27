@@ -132,9 +132,14 @@ export function withTimeout<T>(
  * one of these AND configured with an explicit `baseURL` is treated as a
  * LiteLLM candidate, so arbitrary provider ids (e.g. `ai-proxy-lkd`) are
  * no longer silently ignored just because they don't carry the `litellm`
- * name or flag.
+ * name or flag. OpenCode 2 names the same family in `package` instead of
+ * `npm`, so that value is listed too.
  */
-const OPENAI_COMPATIBLE_NPM = ['@ai-sdk/openai-compatible', '@ai-sdk/openai'] as const
+const OPENAI_COMPATIBLE_NPM = [
+  '@ai-sdk/openai-compatible',
+  '@ai-sdk/openai',
+  '@opencode/ai/providers/openai-compatible',
+] as const
 
 /**
  * Helper to determine if a provider ID or its configured options indicate
@@ -148,7 +153,7 @@ const OPENAI_COMPATIBLE_NPM = ['@ai-sdk/openai-compatible', '@ai-sdk/openai'] as
 export function isLiteLLMProvider(
   providerId: string,
   npm: string | undefined,
-  options: Record<string, unknown>,
+  options: Record<string, unknown> = {},
 ): boolean {
   if (providerId === CHAT_PROVIDER_ID) return true
   if (providerId.startsWith('litellm-') || providerId.startsWith('litellm_')) return true

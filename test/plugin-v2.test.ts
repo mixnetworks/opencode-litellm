@@ -734,7 +734,7 @@ describe('OpenCode 2 plugin entrypoint', () => {
     await cleanup?.()
   })
 
-  it('uses service environment variables to create the default provider', async () => {
+  it('uses service environment variables to configure a recognized v2 provider', async () => {
     cacheDirectory = mkdtempSync(join(tmpdir(), 'opencode-litellm-env-test-'))
     process.env.XDG_CACHE_HOME = cacheDirectory
     process.env.LITELLM_BASE_URL = 'https://llm.example.com/v1'
@@ -755,7 +755,7 @@ describe('OpenCode 2 plugin entrypoint', () => {
       )
     })
 
-    const unmarkedProvider = {
+    const configuredProvider = {
       id: 'llm.ciss.de',
       name: 'CISS provider',
       activation: 'enabled',
@@ -781,7 +781,7 @@ describe('OpenCode 2 plugin entrypoint', () => {
       app: { name: 'OpenCode', version: '2.0.15', channel: 'stable' },
       options: {},
       provider: {
-        list: vi.fn(async () => ({ data: [unmarkedProvider] })),
+        list: vi.fn(async () => ({ data: [configuredProvider] })),
         transform: vi.fn(async (transform: (editor: unknown) => void) => {
           transform(editor as never)
           return { dispose: vi.fn(async () => {}) }
@@ -794,7 +794,10 @@ describe('OpenCode 2 plugin entrypoint', () => {
     const cleanup = await plugin.setup(context)
 
     expect(registered).toHaveLength(1)
-    expect(registered[0].info).toMatchObject({ id: 'litellm' })
+    // The fork recognizes any openai-compatible provider that carries a
+    // baseURL, so this provider is published under its own id instead of
+    // falling back to the default `litellm` provider.
+    expect(registered[0].info).toMatchObject({ id: 'llm.ciss.de' })
     expect(registered[0].info.settings).toMatchObject({
       baseURL: 'https://llm.example.com/v1',
       apiKey: 'example-litellm-key',
