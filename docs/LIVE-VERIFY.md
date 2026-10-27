@@ -1,19 +1,68 @@
 # Live verification (human-run, on VPN)
 
-Manual acceptance check for DESIGN.md §Acceptance item 4. Takes ~5 minutes.
-All commands run from a scratch directory so nothing touches this repo.
+Manual acceptance check for DESIGN.md §Acceptance item 4, on both supported
+host versions. All commands run from a scratch directory so nothing touches
+this repo.
 
 ## Prerequisites
 
 - Connected to the Mix VPN (the proxy is unreachable otherwise).
-- `opencode` CLI installed (verified on 1.18.29).
+- `opencode` CLI installed — OpenCode 2.1.3 for the v2 run below, 1.18.29
+  for the v1 run.
 - API key file at `~/.secrets/ai-proxy-lkd.txt` containing only the key:
 
   ```bash
   ls -l ~/.secrets/ai-proxy-lkd.txt   # exists, mode 600
   ```
 
-## Steps
+## OpenCode 2 verification (2.x)
+
+Run in a scratch directory with the v2-shaped config (the recommended form
+on 2.x; see `docs/UPGRADE-2.0.md` §6.1 for the field mapping):
+
+```bash
+mkdir -p /tmp/litellm-live-verify-v2 && cd /tmp/litellm-live-verify-v2
+cat > opencode.json <<'EOF'
+{
+  "$schema": "https://opencode.ai/config.json",
+  "providers": {
+    "ai-proxy-lkd": {
+      "name": "Mix proxy (LiteLLM)",
+      "package": "@opencode/ai/providers/openai-compatible",
+      "settings": {
+        "baseURL": "https://ai-proxy-lkd.whitelabelvoip.net/v1",
+        "apiKey": "{file:~/.secrets/ai-proxy-lkd.txt}"
+      }
+    }
+  }
+}
+EOF
+```
+
+1. **Host version**: `opencode --version` → 2.1.3 (or any 2.0.19+).
+2. **Single load** (upgrade audit B7): `opencode plugin list` →
+   `opencode-litellm` listed **exactly once**. If it appears twice, the
+   install was discovered both as the clone directory and the flat
+   `.ts` symlink — drop the symlink and declare the directory under
+   `plugins` (explicit plugin paths must be directories; README §Install).
+3. **Recognition of the arbitrary id**: launch `opencode`, open the model
+   switcher (`/models`) → entries under `ai-proxy-lkd/…` appear. This
+   proves the structural match (`provider.package` → `isLiteLLMProvider`)
+   fired on v2.
+4. **Credential round-trip**: send one interactive prompt; it completes
+   through the proxy. This proves the `{file:}`-substituted key works on
+   the v2 path.
+5. **One-shot caveat**: a cold-cache `opencode run` can fail with
+   `Model unavailable: ai-proxy-lkd/…` before discovery lands (host orders
+   provider registration after plugin setup — anomalyco/opencode#57421).
+   Re-run before diagnosing; not a plugin regression.
+6. **Negative test**: rename the key file, restart OpenCode → discovery
+   must fail **loudly** (401/403 in the plugin log), not silently show an
+   empty provider. Rename it back and confirm recovery.
+
+## OpenCode 1 verification (1.18.x)
+
+The original v1-era steps, kept for the legacy `server()` path:
 
 ### 1. Scratch directory + config
 
