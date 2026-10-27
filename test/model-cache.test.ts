@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'n
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { readModelCache, readModelCacheSavedAt, writeModelCache, buildCacheKey } from '../src/utils/model-cache'
+import { readModelCache, readModelCacheEntry, readModelCacheResponsesIds, readModelCacheSavedAt, writeModelCache, buildCacheKey } from '../src/utils/model-cache'
 
 const KEY = 'litellm@http://localhost:4000'
 
@@ -57,10 +57,57 @@ describe('model cache', () => {
     expect(Object.keys(readModelCache('b@http://x') ?? {})).toEqual(['b'])
   })
 
+  it('round-trips the Responses-API model ids alongside the models', () => {
+    writeModelCache('r@http://x', { chat: {}, responses: {} }, ['responses'])
+    expect(readModelCache('r@http://x')).toEqual({ chat: {}, responses: {} })
+    expect(readModelCacheResponsesIds('r@http://x')).toEqual(['responses'])
+  })
+
+  it('reads an empty Responses id list from a missing or id-less cache', () => {
+    expect(readModelCacheResponsesIds('missing@http://nowhere')).toEqual([])
+    writeModelCache('no-ids@http://x', { m: {} })
+    expect(readModelCacheResponsesIds('no-ids@http://x')).toEqual([])
+  })
+
+  it('reads models and Responses ids together in one entry', () => {
+    expect(readModelCacheEntry('missing@http://nowhere')).toBeNull()
+    writeModelCache('entry@http://x', { chat: {}, responses: {} }, ['responses'])
+    expect(readModelCacheEntry('entry@http://x')).toEqual({
+      models: { chat: {}, responses: {} },
+      responsesIds: ['responses'],
+      hints: {},
+    })
+  })
+
+  it('round-trips model hints and drops malformed ones', () => {
+    const a = { acceptsCacheControl: true, adaptiveThinking: true, thinkingAlwaysOn: false }
+    const b = { acceptsCacheControl: false, adaptiveThinking: false, thinkingAlwaysOn: true }
+    writeModelCache('hints@http://x', { a: {}, b: {} }, [], { a, b })
+    expect(readModelCacheEntry('hints@http://x')?.hints).toEqual({ a, b })
+    rewriteCacheFile('hints@http://x', (parsed) => {
+      parsed.hints = { a: { acceptsCacheControl: 'yes', adaptiveThinking: 1 }, b: null, c: [] }
+    })
+    expect(readModelCacheEntry('hints@http://x')?.hints).toEqual({
+      a: { acceptsCacheControl: false, adaptiveThinking: false, thinkingAlwaysOn: false },
+    })
+  })
+
+  it('treats caches that predate the thinking hints as a miss', () => {
+    writeModelCache(KEY, { m: {} }, ['m'])
+    rewriteCacheFile(KEY, (parsed) => {
+      parsed.version = 4
+      parsed.hints = { m: { acceptsCacheControl: true } }
+    })
+    expect(readModelCacheEntry(KEY)).toBeNull()
+    expect(readModelCache(KEY)).toBeNull()
+  })
+
   it('ignores cache files written by a different plugin version', () => {
     writeModelCache(KEY, { m: {} })
     rewriteCacheFile(KEY, (parsed) => {
-      parsed.version = 999
+      // v1 entries lack the explicit text-only modality metadata and must
+      // not make OpenCode fall back to image-capable defaults after upgrade.
+      parsed.version = 1
     })
     expect(readModelCache(KEY)).toBeNull()
     writeModelCache(KEY, { m: {} })
@@ -95,6 +142,21 @@ describe('buildCacheKey', () => {
         {},
       ),
     ).toBe(KEY)
+  })
+
+  it('isolates the key by credential fingerprint', () => {
+    // Regression for the CodeRabbit review finding: a model list cached with
+    // one credential must never be served to another — keys expose different
+    // model sets, so a credential change starts a fresh discovery.
+    const without = buildCacheKey('litellm', 'http://localhost:4000', {}, {})
+    const keyA = buildCacheKey('litellm', 'http://localhost:4000', {}, {}, {}, 'sk-key-a')
+    const keyA2 = buildCacheKey('litellm', 'http://localhost:4000', {}, {}, {}, 'sk-key-a')
+    const keyB = buildCacheKey('litellm', 'http://localhost:4000', {}, {}, {}, 'sk-key-b')
+    expect(keyA).toBe(keyA2)
+    expect(keyA).not.toBe(keyB)
+    expect(keyA).not.toBe(without)
+    // The fingerprint never carries the raw key.
+    expect(keyA).not.toContain('sk-key-a')
   })
 
   it('changes the key when capability overrides are added or changed', () => {

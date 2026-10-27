@@ -1,3 +1,73 @@
+# [1.8.0](https://github.com/yuseferi/opencode-litellm/compare/v1.7.1...v1.8.0) (2026-10-26)
+
+
+### Features
+
+* declare temperature support for models that list it ([#47](https://github.com/yuseferi/opencode-litellm/issues/47)) ([f68252f](https://github.com/yuseferi/opencode-litellm/commit/f68252f5d72a6caa9516dbae264b1153ad72d906))
+
+## [1.7.1](https://github.com/yuseferi/opencode-litellm/compare/v1.7.0...v1.7.1) (2026-10-20)
+
+
+### Bug Fixes
+
+* prefer the user's saved provider credential over the pod env key ([#43](https://github.com/yuseferi/opencode-litellm/issues/43)) ([cab808f](https://github.com/yuseferi/opencode-litellm/commit/cab808f7d893bf026acce92fcd8df76bf117f33b)), closes [#44](https://github.com/yuseferi/opencode-litellm/issues/44) [#41](https://github.com/yuseferi/opencode-litellm/issues/41)
+
+# [1.7.0](https://github.com/yuseferi/opencode-litellm/compare/v1.6.1...v1.7.0) (2026-10-20)
+
+
+### Features
+
+* **v2:** register LiteLLM integration for web-UI connect ([#41](https://github.com/yuseferi/opencode-litellm/issues/41)) ([4be4046](https://github.com/yuseferi/opencode-litellm/commit/4be40467f8cb6c106b233c9d0039f75c35d5674f))
+
+## [1.6.1](https://github.com/yuseferi/opencode-litellm/compare/v1.6.0...v1.6.1) (2026-10-20)
+
+
+### Bug Fixes
+
+* **v2:** spell effort variants for Anthropic runtime packages ([#45](https://github.com/yuseferi/opencode-litellm/issues/45)) ([4840d81](https://github.com/yuseferi/opencode-litellm/commit/4840d813a04703a9d3377528e782d8897997aa81))
+
+# [1.6.0](https://github.com/yuseferi/opencode-litellm/compare/v1.5.0...v1.6.0) (2026-10-20)
+
+
+### Features
+
+* **v2:** enable prompt caching for Claude behind LiteLLM ([#44](https://github.com/yuseferi/opencode-litellm/issues/44)) ([d6f6e11](https://github.com/yuseferi/opencode-litellm/commit/d6f6e113ab1275a84e2dfcf65f858ca89345bb4c)), closes [#42](https://github.com/yuseferi/opencode-litellm/issues/42) [#42](https://github.com/yuseferi/opencode-litellm/issues/42)
+
+# [1.5.0](https://github.com/yuseferi/opencode-litellm/compare/v1.4.3...v1.5.0) (2026-10-15)
+
+
+### Features
+
+* route LiteLLM Responses-API models to /v1/responses ([#40](https://github.com/yuseferi/opencode-litellm/issues/40)) ([41a05bd](https://github.com/yuseferi/opencode-litellm/commit/41a05bd7596061454ea77e1334a18ea091713144))
+
+## [1.4.3](https://github.com/yuseferi/opencode-litellm/compare/v1.4.2...v1.4.3) (2026-10-14)
+
+
+### Bug Fixes
+
+* **v2:** skip setup when the host context has no provider API ([#39](https://github.com/yuseferi/opencode-litellm/issues/39)) ([d352039](https://github.com/yuseferi/opencode-litellm/commit/d3520397b0b98093a9babdba1feeb6b6c5d95f47))
+
+## [1.4.2](https://github.com/yuseferi/opencode-litellm/compare/v1.4.1...v1.4.2) (2026-09-30)
+
+
+### Bug Fixes
+
+* restore baseline reasoning-effort variants ([#38](https://github.com/yuseferi/opencode-litellm/issues/38)) ([1d8706e](https://github.com/yuseferi/opencode-litellm/commit/1d8706e377739f1ec1798307e488f0ca7d2f89b3))
+
+## [1.4.1](https://github.com/yuseferi/opencode-litellm/compare/v1.4.0...v1.4.1) (2026-09-29)
+
+
+### Bug Fixes
+
+* discover LiteLLM providers registered after plugin setup ([#35](https://github.com/yuseferi/opencode-litellm/issues/35)) ([555e302](https://github.com/yuseferi/opencode-litellm/commit/555e302d9dbbdc980d32736368b65237f74ffb5d)), closes [#1](https://github.com/yuseferi/opencode-litellm/issues/1) [#2](https://github.com/yuseferi/opencode-litellm/issues/2)
+
+# [1.4.0](https://github.com/yuseferi/opencode-litellm/compare/v1.3.0...v1.4.0) (2026-09-29)
+
+
+### Features
+
+* OpenCode 2 plugin API support ([#32](https://github.com/yuseferi/opencode-litellm/issues/32)) ([6215ca7](https://github.com/yuseferi/opencode-litellm/commit/6215ca7bb6652916cbece81953d500ee2bbf7e43))
+
 # [1.3.0](https://github.com/yuseferi/opencode-litellm/compare/v1.2.0...v1.3.0) (2026-09-23)
 
 
@@ -7,9 +77,30 @@
 
 ## [Unreleased]
 
+### Breaking Changes
+
+* On OpenCode 1, models LiteLLM reports with `mode: "responses"` move to a `<provider>-responses` sibling provider, so their model id changes from `<provider>/<model>` to `<provider>-responses/<model>`. Update saved sessions, agents, and `opencode.json` references that hard-code the old id. OpenCode 2 is unaffected.
+
+### Bug Fixes
+
+* prefer a credential saved in the box (the active connection / `/connect` entry) over `LITELLM_API_KEY` / `LITELLM_MASTER_KEY` on both the V1 server path and the OpenCode 2 plugin host; the model cache is now isolated per credential
+* **v2:** register Chat Completions models whose deployment accepts Anthropic `cache_control` with `compatibility.cacheFormat: "anthropic"` so prompt caching works for Claude behind LiteLLM
+* **v2:** spell reasoning-effort variants as `thinking` + `effort` for providers on an Anthropic runtime package, where `reasoningEffort` is ignored; models without adaptive thinking get none there
+* restore baseline reasoning-effort variants from sparse LiteLLM metadata (including GPT-6 Astra), respect explicit effort lists and disabled levels
+* avoid inferring reasoning-effort variants from negative-only flags or unsupported request parameters
+* constrain inferred GPT-5 Pro effort variants to provider-supported levels, including aliased and dated deployments
+
 ### Features
 
+* register a LiteLLM integration with OpenCode 2's connect-provider dialog so gateways can be connected entirely from the web UI (API key plus an optional base URL/provider id form), with the stored key used for discovery and injected by OpenCode at request time
+* **v2:** add the `modelCompatibility` option to set or remove the inferred `cacheFormat` per model
+* route models LiteLLM reports with `mode: "responses"` through the OpenAI Responses API (per-model runtime package on OpenCode 2; a `<provider>-responses` sibling on OpenCode 1)
+* support the OpenCode 2 API with the OpenCode 1 server entrypoint
 * add `formatModelNames` option to keep raw model ids in the picker
+
+### Bug Fixes
+
+* register models without modality metadata as text-only to avoid image requests to text-only routes
 
 # [1.2.0](https://github.com/yuseferi/opencode-litellm/compare/v1.1.0...v1.2.0) (2026-09-13)
 

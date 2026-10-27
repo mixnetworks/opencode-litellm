@@ -20,6 +20,28 @@ describe('toConfigModel naming (formatModelNames)', () => {
     )
   })
 
+  it('preserves an explicit false tool-calling capability', () => {
+    expect(
+      toConfigModel(chat, undefined, true)?.tool_call,
+    ).toBeUndefined()
+    expect(
+      toConfigModel(model('text-only', { supports_function_calling: false }))?.tool_call,
+    ).toBe(false)
+  })
+
+  it('preserves an explicit no-vision modality override', () => {
+    expect(
+      toConfigModel(model('text-only', { supports_vision: false }))?.modalities,
+    ).toEqual({ input: ['text'], output: ['text'] })
+  })
+
+  it('defaults to text-only when capability metadata is absent', () => {
+    expect(toConfigModel(model('text-only'))?.modalities).toEqual({
+      input: ['text'],
+      output: ['text'],
+    })
+  })
+
   it('leaves provider prefixes and version suffixes intact when raw', () => {
     const versioned = model('claude-opus-4-5@20251101')
     expect(toConfigModel(versioned, undefined, false)?.name).toBe(
@@ -33,5 +55,27 @@ describe('toConfigModel naming (formatModelNames)', () => {
     const embedding = model('text-embedding-3-large', { mode: 'embedding' })
     expect(toConfigModel(embedding, undefined, false)).toBeNull()
     expect(toConfigModel(embedding, undefined, true)).toBeNull()
+  })
+})
+
+describe('toConfigModel temperature', () => {
+  const chat = model('company/chat')
+
+  it('declares temperature when supported_openai_params lists it', () => {
+    expect(
+      toConfigModel(chat, { supported_openai_params: ['max_tokens', 'temperature'] })?.temperature,
+    ).toBe(true)
+  })
+
+  it('leaves temperature unset when the parameter is not listed', () => {
+    expect(
+      toConfigModel(chat, { supported_openai_params: ['max_tokens', 'reasoning_effort'] })
+        ?.temperature,
+    ).toBeUndefined()
+    expect(toConfigModel(chat, { supported_openai_params: null })?.temperature).toBeUndefined()
+  })
+
+  it('leaves temperature unset when /v1/model/info is unavailable', () => {
+    expect(toConfigModel(chat)?.temperature).toBeUndefined()
   })
 })

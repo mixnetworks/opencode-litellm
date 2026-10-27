@@ -7,14 +7,41 @@ maintain, no restarts when models change. Fork of
 (MIT), retargeted at the Mix proxy. Licensed MIT — see
 [LICENSE](./LICENSE).
 
+Runs on OpenCode 1 (1.18.29+, legacy `server()` entrypoint) and OpenCode 2
+(native `Plugin.define`, provider-registry discovery, in-process refresh) from
+one package.
+
 ## Requirements
 
-- [OpenCode](https://opencode.ai) (CLI). Discovered models appear in the CLI
-  only — the OpenCode Desktop picker does not reflect plugin-added models
-  (upstream limitation, yuseferi/opencode-litellm#5).
+- [OpenCode](https://opencode.ai) 1.18.29+ or 2.0.19+ (CLI; Desktop through the
+  OpenCode 2 host). On the OpenCode 1 path discovered models appear in the CLI
+  only — the Desktop picker does not reflect plugin-added models (upstream
+  limitation, yuseferi/opencode-litellm#5). OpenCode 2 registers models through
+  its provider registry, so Desktop sees them there.
 - Access to the Mix proxy at `https://ai-proxy-lkd.whitelabelvoip.net`.
   The endpoint is only reachable from the Mix VPN.
 - An API key for the proxy.
+
+## Features
+
+| | |
+|---|---|
+| 🔍 **Base-URL resolution** | Explicit `providers.<id>.settings.baseURL` (or plugin `baseURL`) wins, then `LITELLM_BASE_URL`, then the Mix proxy default. Nothing is probed on `localhost`: with nothing configured the plugin health-checks the Mix proxy and gives up quietly when the VPN is down. |
+| 📡 **Dynamic discovery** | Queries `/v1/models` so the OpenCode model picker always reflects the proxy's live `model_list`. |
+| ⚡ **Stale-while-revalidate** | A warm disk cache supplies models without a network request. New sessions trigger a background refresh, and cache entries expire after 7 days. |
+| 🏷️ **Smart formatting** | Turns `anthropic/claude-3-5-sonnet` into `Claude 3.5 Sonnet` in the picker — handles versions, sizes, quantizations, and brand-cased names like `gpt-4o`. Set `formatModelNames: false` to keep the raw LiteLLM ids instead. |
+| 🧠 **Modality-aware** | Enriches `/v1/models` entries with `/v1/model/info` (`mode`, token limits, capability flags) and hides embedding / image / audio models from the picker. Declares `temperature` support only for models whose `supported_openai_params` lists it. |
+| 💵 **Real pricing** | Maps `input_cost_per_token` / `output_cost_per_token` (and cache read/write costs) from `/v1/model/info` into OpenCode's `cost` field, so the picker and `/cost` show what the proxy actually bills instead of `$0.00`. Models LiteLLM has no price for are left unpriced, not falsely marked free. |
+| 🧩 **Reasoning-effort variants** | When LiteLLM reports per-model effort support (`supports_low_reasoning_effort`, …), each level is surfaced as a picker variant automatically. |
+| 🧭 **Responses-API routing** | Models LiteLLM reports with `mode: "responses"` are invoked through `/v1/responses` instead of `/v1/chat/completions`, with no extra configuration. OpenCode 2 overrides the runtime package per model; OpenCode 1 gets a `<provider>-responses` sibling. |
+| 🔐 **Auth-aware** | Honours the provider's `apiKey`, OpenCode `/connect` credentials, and `LITELLM_API_KEY` / `LITELLM_MASTER_KEY` on both the OpenCode 1 server path and the OpenCode 2 plugin host; on OpenCode 2 a **LiteLLM** entry in the connect dialog (key plus optional base URL) connects the Mix proxy entirely from the web UI. A saved credential beats the environment key. |
+| 🌐 **Gateway-friendly** | Supports provider `headers` (and the legacy `customHeaders` option) for proxies behind Cloudflare Access or other API gateways. |
+| 🧩 **Splittable catalog** | `includeModels` / `excludeModels` (glob patterns) let one proxy be divided into several OpenCode providers — e.g. by naming prefix — without hand-maintaining a model list. |
+| 🎚️ **Capability overrides** | `modelCapabilities` forces or retracts per-model capability flags (`supports_vision`, `supports_function_calling`, …) when `/v1/model/info` is unavailable or disagrees with the deployment. |
+| 💾 **Prompt caching (OpenCode 2.0.28+)** | Chat models whose deployment accepts Anthropic `cache_control` markers are registered with `compatibility.cacheFormat: "anthropic"`, so OpenCode 2 places cache breakpoints as it does for a native Anthropic provider. `modelCompatibility` corrects this per model. |
+| ⏱️ **Bounded startup** | Health checks fail fast (3 s); discovery fetches are capped at **15 s** (configurable via `LITELLM_REQUEST_TIMEOUT_MS`) for a slow or distant proxy. OpenCode 2 model refresh runs in the background. |
+| 🤝 **Non-destructive merge** | Only adds models you don't already have configured. Hand-curated entries are preserved verbatim and always win over discovered ones. |
+| 🔌 **OpenCode 1 + 2** | Supports OpenCode 2's native `Plugin.define`, provider transforms, event subscription, and live model refresh, plus the OpenCode 1.18.29+ legacy `server()` entrypoint. |
 
 ## Install
 
@@ -61,6 +88,25 @@ Add the provider to `opencode.json` (project) or
 }
 ```
 
+On OpenCode 2 the same provider is spelled with the v2 keys —
+`providers.<id>.package` + `settings`:
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "providers": {
+    "ai-proxy-lkd": {
+      "name": "Mix LiteLLM",
+      "package": "@opencode/ai/providers/openai-compatible",
+      "settings": {
+        "baseURL": "https://ai-proxy-lkd.whitelabelvoip.net/v1",
+        "apiKey": "{file:~/.secrets/ai-proxy-lkd.txt}"
+      }
+    }
+  }
+}
+```
+
 Start `opencode`. Models, token limits, capability flags, and per-token costs
 are discovered from the proxy automatically — there is no `models` block to
 write. Hand-curated entries you add under `provider.ai-proxy-lkd.models` are
@@ -76,6 +122,10 @@ export LITELLM_API_KEY=sk-...   # LITELLM_MASTER_KEY also works
 opencode
 ```
 
+`LITELLM_BASE_URL` overrides the proxy URL when you need a different gateway
+(it is returned as configured, without a health check). It is never a
+`localhost` guess — point it at the proxy explicitly.
+
 ## Authentication
 
 The plugin resolves the API key from, in order:
@@ -85,6 +135,10 @@ The plugin resolves the API key from, in order:
 | Provider options (`{file:}` and `{env:}` both work) | `"apiKey": "{file:~/.secrets/ai-proxy-lkd.txt}"` |
 | Environment variable | `export LITELLM_API_KEY=sk-...` (or `LITELLM_MASTER_KEY`) |
 | OpenCode's credential store | `/connect`, pick the provider, paste the key |
+
+On OpenCode 2, `/connect` → **LiteLLM** (or the Desktop providers view) also
+takes an optional base URL and provider id, so the gateway can be connected
+entirely from the UI. A credential saved that way beats the environment key.
 
 ## Troubleshooting
 
@@ -96,14 +150,40 @@ The plugin resolves the API key from, in order:
   `~/.local/share/opencode/log/`) and look for `[opencode-litellm]` lines.
   Deleting `~/.cache/opencode-litellm/` forces a fresh discovery on the next
   start.
-- Models appear in the CLI but not Desktop: known OpenCode Desktop limitation,
-  not a plugin bug.
+- Models appear in the CLI but not Desktop: on the OpenCode 1 path this is a
+  known OpenCode Desktop limitation, not a plugin bug; OpenCode 2 registers
+  models through its provider registry, so check the plugin log for provider
+  discovery errors instead.
 
 ## Development
 
 ```bash
 npm install && npm test
 ```
+
+Source map:
+
+```
+src/
+├── index.ts                    # Public exports (default: OpenCode 2 definition; named: v1 plugins)
+├── types/index.ts              # LiteLLM API types
+├── utils/
+│   ├── litellm-api.ts          # health check, discovery (/v1/models + /v1/model/info), auto-detect
+│   ├── format-model-name.ts    # name formatting, categorization
+│   ├── model-cache.ts          # stale-while-revalidate on-disk model cache
+│   ├── model-filter.ts         # includeModels/excludeModels glob filtering
+│   ├── model-capabilities.ts   # per-model capability flag overrides
+│   ├── model-compatibility.ts  # cacheFormat inference and per-model overrides
+│   ├── reasoning-efforts.ts    # reasoning-effort variant discovery from /v1/model/info
+│   ├── transport.ts            # Responses-API routing decision (mode: "responses" → /v1/responses)
+│   └── opencode-auth.ts        # fallback to OpenCode's /connect-stored credentials
+└── plugin/
+    ├── index.ts                # OpenCode 1 server entry and shared discovery logic
+    ├── integration.ts          # OpenCode 2 /connect integration (LiteLLM key + base-URL dialog)
+    └── v2.ts                   # OpenCode 2 definition, provider transform, event-driven reload
+```
+
+`test/` holds the vitest suite for the pure logic and the plugin hosts.
 
 ## License
 

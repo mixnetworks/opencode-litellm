@@ -1,5 +1,6 @@
 import type { LiteLLMModel, LiteLLMModelInfo, LiteLLMModelInfoResponse, LiteLLMModelsResponse } from '../types'
 import { CAPABILITY_FLAGS } from './model-capabilities'
+import { resolveReasoningEfforts } from './reasoning-efforts'
 
 export const DEFAULT_LITELLM_URL = 'https://ai-proxy-lkd.whitelabelvoip.net'
 const MODELS_ENDPOINT = '/v1/models'
@@ -136,23 +137,7 @@ export async function discoverLiteLLMModelInfo(
       }
     }
 
-    // Add supports reasoning efforts if present in litellm_params
-    const reasoningEffortPattern = /^supports_([a-z]+)_reasoning_effort$/
-    const efforts = new Set<string>()
-    for (const source of [info, entry.litellm_params]) {
-      if (!source || typeof source !== 'object') continue
-      for (const [key, value] of Object.entries(source)) {
-        const match = key.match(reasoningEffortPattern)
-        if (match && value === true) {
-          efforts.add(match[1])
-        }
-      }
-    }
-    if (efforts.size > 0) {
-      info.supports_reasoning_efforts = [
-        ...new Set([...(info.supports_reasoning_efforts ?? []), ...efforts]),
-      ]
-    }
+    info.supports_reasoning_efforts = resolveReasoningEfforts(info, entry.litellm_params)
 
     // Index under every alias LiteLLM may use for this model — the
     // `/v1/models` id can match any of them depending on how the
@@ -172,13 +157,17 @@ export async function discoverLiteLLMModelInfo(
 }
 
 /**
- * Auto-detect a LiteLLM proxy for zero-config use. No localhost port
- * probing anymore: health-check the Mix proxy default (already the
- * plugin's zero-config endpoint) and return it when healthy, else null.
- * The health check is fail-fast (3 s) so a missing VPN doesn't stall
- * startup.
+ * Auto-detect a LiteLLM proxy for zero-config use. An explicit
+ * `LITELLM_BASE_URL` wins (returned as-is, no health check — same tier as a
+ * configured baseURL). Otherwise health-check the Mix proxy default (already
+ * the plugin's zero-config endpoint) and return it when healthy, else null.
+ * No localhost port probing, ever. The health check is fail-fast (3 s) so a
+ * missing VPN doesn't stall startup.
  */
 export async function autoDetectLiteLLM(apiKey?: string, customHeaders?: Record<string, string>): Promise<string | null> {
+  const configuredBaseURL = process.env.LITELLM_BASE_URL?.trim()
+  if (configuredBaseURL) return normalizeBaseURL(configuredBaseURL)
+
   if (await checkLiteLLMHealth(DEFAULT_LITELLM_URL, apiKey, customHeaders)) {
     return DEFAULT_LITELLM_URL
   }
